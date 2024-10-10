@@ -78,7 +78,7 @@ if __name__ == "__main__":
         decoder = bencodeDecoder(bencoded_inp)
         try:
             decoded_obj = decoder.decode()
-            print(json.dumps(decoded_obj, indent=3))
+            print(json.dumps(decoded_obj, separators=(",",":")))
         except (ValueError, NotImplementedError) as e:
             print(f"Error: {e}")
     else:
