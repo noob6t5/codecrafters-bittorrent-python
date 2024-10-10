@@ -3,26 +3,26 @@ import sys
 
 
 def decode_bencode(bencoded_value):
-    if chr(bencoded_value[0]).isdigit():
+    if bencoded_value[0] == ord("i"):  # Check if the value is a bencoded integer
+        end_index = bencoded_value.find(b"e")
+        if end_index == -1:
+            raise ValueError("Invalid encoded integer")
+        return int(bencoded_value[1:end_index])  
+    elif chr(bencoded_value[0]).isdigit():  
         first_colon_index = bencoded_value.find(b":")
         if first_colon_index == -1:
             raise ValueError("Invalid encoded value")
         return bencoded_value[first_colon_index + 1 :]
     else:
-        raise NotImplementedError("Only strings are supported at the moment")
+        raise NotImplementedError(
+            "Only strings and integers are supported at the moment"
+        )
 
 
 def main():
     command = sys.argv[1]
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    #print("Logs from your program will appear here!")
     if command == "decode":
         bencoded_value = sys.argv[2].encode()
-
-        # json.dumps() can't handle bytes, but bencoded "strings" need to be
-        # bytestrings since they might contain non utf-8 characters.
-        #
-        # Let's convert them to strings for printing to the console.
         def bytes_to_str(data):
             if isinstance(data, bytes):
                 return data.decode()
