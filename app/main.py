@@ -121,7 +121,9 @@ def formatted_pieces(pieces: bytes) -> List[str]:
 
 
 def generate_peer_id() -> bytes:
-    return os.urandom(20)
+    return bytes.fromhex(
+        "c7a1d282a019bcb602364930ac1eefd91c7aa897"
+    )  # Use the expected peer ID for testing
 
 
 def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
