@@ -96,7 +96,6 @@ def bytes_to_str(data):
 
 
 def calculate_info_hash(info_dict):
-    # Re-bencode the info dictionary using the bencode function
     bencoded_info = bencode(info_dict)
     return hashlib.sha1(bencoded_info).digest()  # Return the binary digest
 
@@ -123,14 +122,12 @@ def formatted_pieces(pieces: bytes) -> List[str]:
 
 
 def generate_random_peer_id() -> bytes:
-    # Generate a random peer ID with the format '-<client_name><random_bytes>'
-    client_name = b"MyClient"  # You can replace this with any string of your choice
+    client_name = b"MyClient"  # Replace this with any string of your choice
     random_bytes = os.urandom(12)  # 12 random bytes to make a total of 20 bytes
     return b"-" + client_name + random_bytes
 
 
 def create_handshake(infohash: bytes, peer_id: bytes) -> bytes:
-    # Handshake message: length (1 byte), protocol string (19 bytes), reserved (8 bytes), info hash (20 bytes), peer ID (20 bytes)
     protocol = b"BitTorrent protocol"
     reserved = b"\x00" * 8
     handshake_message = (
@@ -143,114 +140,35 @@ def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
     peer_id = generate_random_peer_id()
     handshake_message = create_handshake(infohash, peer_id)
 
-    # Create a TCP socket and connect to the peer
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((peer_ip, peer_port))
         sock.send(handshake_message)
-        response = sock.recv(68)  # Handshake response should be 68 bytes long
+        response = sock.recv(68)
         received_peer_id = response[-20:]
-
-        # Print just the peer ID in the expected format
         print(f"Peer ID: {received_peer_id.hex()}")
-
         return received_peer_id.hex()
 
 
-if __name__ == "__main__":
-    command = sys.argv[1]
+def main():
+    if len(sys.argv) != 4:
+        print("Error: Not enough arguments for handshake.")
+        sys.exit(1)
 
-    if command == "decode":
-        bencoded_inp = sys.argv[2].encode()
-        decoder = bencodeDecoder(bencoded_inp)
-        decoded_value = decoder.decode()
-        print(json.dumps(decoded_value, default=bytes_to_str))
-
-    elif command == "info":
-        file_name = sys.argv[2]
-        try:
-            with open(file_name, "rb") as torrent_file:
-                bencoded_content = torrent_file.read()
-            decoder = bencodeDecoder(bencoded_content)
-            torrent = decoder.decode()
-
-            print("Tracker URL:", torrent["announce"])
-            print("Length:", torrent["info"]["length"])
-
-            # Calculate the info hash
-            info_hash = calculate_info_hash(torrent["info"])
-            print("Info Hash:", info_hash.hex())  # Print the hex representation
-            piece_length = torrent["info"]["piece length"]
-            print("Piece Length:", piece_length)
-
-            piece_hashes = formatted_pieces(torrent["info"]["pieces"])
-            print("Piece Hashes:")
-            for piece_hash in piece_hashes:
-                print(piece_hash)
-
-        except FileNotFoundError:
-            print(f"Error: File '{file_name}' not found.")
-        except KeyError as e:
-            print(f"Error: Missing expected field in torrent file: {e}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-
-    elif command == "peers":
-        file_name = sys.argv[2]
-        try: 
-            with open(file_name, "rb") as torrent_file:
-                bencoded_content = torrent_file.read()
-                decoder = bencodeDecoder(bencoded_content)
-                torrent = decoder.decode()
-                if "peers" not in torrent:
-                    print("Error: Missing expected field in torrent file: 'peers'")
-            url = torrent["announce"]
-            info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
-            query_params = {
-                "info_hash": info_hash,
-                "peer_id": generate_random_peer_id(),  # Use the random peer ID
-                "port": 6881,
-                "uploaded": 0,
-                "downloaded": 0,
-                "left": torrent["info"]["length"],
-                "compact": 1,
-            }
-        
-            # Make GET request to the tracker
-            response = requests.get(url, params=query_params)
-            peers_data = bencodeDecoder(response.content).decode()
-            
-            if "peers" in peers_data:
-                peers = peers_data["peers"]
-                for i in range(0, len(peers), 6):
-                    peer = peers[i: i + 6]
-                    ip_address = f"{peer[0]}.{peer[1]}.{peer[2]}.{peer[3]}"
-                    port = int.from_bytes(peer[4:], byteorder="big")
-                    print(f"{ip_address}:{port}")
-            else:
-                print("Error: Missing expected field in tracker response: 'peers'")
-
-        except FileNotFoundError:
-           print(f"Error: File '{file_name}' not found.")
-        except KeyError as e:
-           print(f"Error: Missing expected field in torrent file: {e}")
-        except Exception as e:
-           print(f"An error occurred: {e}")
-    elif command == "handshake":
-     file_name = sys.argv[2]
+    file_name = sys.argv[2]
     peer_address = sys.argv[3]
+
     try:
         with open(file_name, "rb") as torrent_file:
             bencoded_content = torrent_file.read()
-            decoder = bencodeDecoder(bencoded_content)
-            torrent = decoder.decode()
+            # Use bencodeDecoder to decode the bencoded content
+            torrent = bencodeDecoder(bencoded_content).decode()
+
             info_hash = calculate_info_hash(torrent["info"])
 
-            # Split peer address into IP and port
-            peer_ip, peer_port = peer_address.split(":")
-            peer_port = int(peer_port)
+        peer_ip, peer_port = peer_address.split(":")
+        peer_port = int(peer_port)
 
-            # Perform handshake
-            peer_id = handshake(peer_ip, peer_port, info_hash)
+        handshake(peer_ip, peer_port, info_hash)
 
     except FileNotFoundError:
         print(f"Error: File '{file_name}' not found.")
@@ -259,6 +177,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"An error occurred: {e}")
 
-        
-            
 
+if __name__ == "__main__":
+    main()
