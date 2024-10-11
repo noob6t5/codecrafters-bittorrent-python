@@ -139,6 +139,7 @@ def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
 
 def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
     peer_id = generate_peer_id()
+    print(f"Generated Peer ID: {peer_id.hex()}")
     handshake_message = create_handshake(info_hash, peer_id)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
