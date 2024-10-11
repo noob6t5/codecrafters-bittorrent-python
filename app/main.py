@@ -147,11 +147,7 @@ def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((peer_ip, peer_port))
         sock.send(handshake_message)
-
-        # Receive the handshake response
         response = sock.recv(68)  # Handshake response should be 68 bytes long
-
-        # Extract the peer ID from the response (last 20 bytes)
         received_peer_id = response[-20:]
 
         # Print just the peer ID in the expected format
@@ -200,58 +196,69 @@ if __name__ == "__main__":
 
     elif command == "peers":
         file_name = sys.argv[2]
-        try:
+        try: 
             with open(file_name, "rb") as torrent_file:
                 bencoded_content = torrent_file.read()
                 decoder = bencodeDecoder(bencoded_content)
-            torrent = decoder.decode()
+                torrent = decoder.decode()
+                if "peers" not in torrent:
+                    print("Error: Missing expected field in torrent file: 'peers'")
             url = torrent["announce"]
-            info_hash = calculate_info_hash(torrent["info"])
+            info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
             query_params = {
                 "info_hash": info_hash,
-                "peer_id": generate_random_peer_id(),  # Use random peer ID for peers command
+                "peer_id": generate_random_peer_id(),  # Use the random peer ID
                 "port": 6881,
                 "uploaded": 0,
                 "downloaded": 0,
                 "left": torrent["info"]["length"],
                 "compact": 1,
             }
-
+        
             # Make GET request to the tracker
             response = requests.get(url, params=query_params)
-            peers = bencodeDecoder(response.content).decode()["peers"]
-            for i in range(0, len(peers), 6):
-                peer = peers[i : i + 6]
-                ip_address = f"{peer[0]}.{peer[1]}.{peer[2]}.{peer[3]}"
-                port = int.from_bytes(peer[4:], byteorder="big")
-                print(f"{ip_address}:{port}")
+            peers_data = bencodeDecoder(response.content).decode()
+            
+            if "peers" in peers_data:
+                peers = peers_data["peers"]
+                for i in range(0, len(peers), 6):
+                    peer = peers[i: i + 6]
+                    ip_address = f"{peer[0]}.{peer[1]}.{peer[2]}.{peer[3]}"
+                    port = int.from_bytes(peer[4:], byteorder="big")
+                    print(f"{ip_address}:{port}")
+            else:
+                print("Error: Missing expected field in tracker response: 'peers'")
 
         except FileNotFoundError:
-            print(f"Error: File '{file_name}' not found.")
+           print(f"Error: File '{file_name}' not found.")
         except KeyError as e:
-            print(f"Error: Missing expected field in torrent file: {e}")
+           print(f"Error: Missing expected field in torrent file: {e}")
         except Exception as e:
-            print(f"An error occurred: {e}")
-
+           print(f"An error occurred: {e}")
     elif command == "handshake":
-        file_name = sys.argv[2]
-        peer_address = sys.argv[3]
-        try:
-            with open(file_name, "rb") as torrent_file:
-                bencoded_content = torrent_file.read()
-
+     file_name = sys.argv[2]
+    peer_address = sys.argv[3]
+    try:
+        with open(file_name, "rb") as torrent_file:
+            bencoded_content = torrent_file.read()
             decoder = bencodeDecoder(bencoded_content)
             torrent = decoder.decode()
             info_hash = calculate_info_hash(torrent["info"])
+
             # Split peer address into IP and port
             peer_ip, peer_port = peer_address.split(":")
             peer_port = int(peer_port)
-            peer_id = handshake(peer_ip, peer_port, info_hash)
-            print(f"Connected to peer {peer_ip}:{peer_port} with peer ID {peer_id}")
 
-        except FileNotFoundError:
-            print(f"Error: File '{file_name}' not found.")
-        except KeyError as e:
-            print(f"Error: Missing expected field in torrent file: {e}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+            # Perform handshake
+            peer_id = handshake(peer_ip, peer_port, info_hash)
+
+    except FileNotFoundError:
+        print(f"Error: File '{file_name}' not found.")
+    except KeyError as e:
+        print(f"Error: Missing expected field in torrent file: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+        
+            
+
