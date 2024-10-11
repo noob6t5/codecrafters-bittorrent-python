@@ -140,17 +140,12 @@ def create_handshake(infohash: bytes, peer_id: bytes) -> bytes:
 
 
 def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
-    # Generate a random peer ID
     peer_id = generate_random_peer_id()
-
-    # Create the handshake message
     handshake_message = create_handshake(infohash, peer_id)
 
     # Create a TCP socket and connect to the peer
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((peer_ip, peer_port))
-
-        # Send the handshake message
         sock.send(handshake_message)
 
         # Receive the handshake response
@@ -158,6 +153,9 @@ def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
 
         # Extract the peer ID from the response (last 20 bytes)
         received_peer_id = response[-20:]
+
+        # Print just the peer ID in the expected format
+        print(f"Peer ID: {received_peer_id.hex()}")
 
         return received_peer_id.hex()
 
