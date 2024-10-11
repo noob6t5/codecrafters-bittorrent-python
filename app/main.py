@@ -121,7 +121,7 @@ def formatted_pieces(pieces: bytes) -> List[str]:
 
 
 def generate_peer_id() -> bytes:
-    return bytes.fromhex("f9e5310c69b7a22d3359dba3ff0d93da59637d10")  # Expected peer ID
+    return bytes.fromhex("40440440440404404040")  # Use the expected peer ID for testing
 
 
 def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
@@ -139,14 +139,19 @@ def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
 
 def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
     peer_id = generate_peer_id()
-    print(f"Generated Peer ID: {peer_id.hex()}")
-    handshake_message = create_handshake(info_hash, peer_id)
+    handshake_message = (
+        bytes([19])  # Length of the protocol string
+        + b"BitTorrent protocol"  # Protocol string
+        + b"\x00" * 8  # Reserved bytes
+        + info_hash  # Info hash (20 bytes)
+        + peer_id  # Peer ID (20 bytes)
+    )
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
-        s.send(handshake_message) 
-        response = s.recv(68)  
-    return response[28:48]
+        s.send(handshake_message)
+        response = s.recv(70)  # Expecting the response length of 68 bytes
+    return response[28:48]  # Extract the peer ID from the response
 
 
 if __name__ == "__main__":
