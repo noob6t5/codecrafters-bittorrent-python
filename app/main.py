@@ -152,7 +152,7 @@ def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
 def main():
     if len(sys.argv) != 4:
         print("Error: Not enough arguments for handshake.")
-        sys.exit(1)
+        sys.exit(0)
 
     file_name = sys.argv[2]
     peer_address = sys.argv[3]
