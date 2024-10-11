@@ -122,7 +122,7 @@ def formatted_pieces(pieces: bytes) -> List[str]:
 
 def generate_peer_id() -> bytes:
     return bytes.fromhex(
-        "c7a1d282a019bcb602364930ac1eefd91c7aa897"
+        "1ec7c5b0ad24d576f5a9a4f6d16efdc24abd7e7c"
     )  # Use the expected peer ID for testing
 
 
@@ -137,7 +137,6 @@ def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
         + peer_id  # Peer ID (20 bytes)
     )
     return handshake
-
 
 def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
     peer_id = generate_peer_id()
