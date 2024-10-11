@@ -179,52 +179,22 @@ if __name__ == "__main__":
             print(f"Error: Missing expected field in torrent file: {e}")
         except Exception as e:
             print(f"An error occurred: {e}")
-    elif command == "peers":
-        file_name = sys.argv[2]
-        try:
-            with open(file_name, "rb") as torrent_file:
-                bencoded_content = torrent_file.read()
-                decoder = bencodeDecoder(bencoded_content)
-            torrent = decoder.decode()
-            url = torrent["announce"]
-            info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
-            query_params = {
-                "info_hash": info_hash,
-                "peer_id": "00112233445566778899",
-                "port": 6881,
-                "uploaded": 0,
-                "downloaded": 0,
-                "left": torrent["info"]["length"],
-                "compact": 1,
-            }
-            response = requests.get(url, params=query_params)
-            peers = bencodeDecoder(response.content).decode()["peers"]
-            for i in range(0, len(peers), 6):
-                peer = peers[i : i + 6]
-                ip_address = f"{peer[0]}.{peer[1]}.{peer[2]}.{peer[3]}"
-                port = int.from_bytes(peer[4:], byteorder="big")
-                print(f"{ip_address}:{port}")
-        except FileNotFoundError:
-            print(f"Error: File '{file_name}' not found.")
-        except KeyError as e:
-            print(f"Error: Missing expected field in torrent file: {e}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-
     elif command == "handshake":
+        
         file_name = sys.argv[2]
         peer_address = sys.argv[3].split(":")
         peer_ip = peer_address[0]
         peer_port = int(peer_address[1])
-
+        
         try:
+            
             with open(file_name, "rb") as torrent_file:
                 bencoded_content = torrent_file.read()
                 decoder = bencodeDecoder(bencoded_content)
-            torrent = decoder.decode()
-            info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
-            peer_id = perform_handshake(peer_ip, peer_port, info_hash)
-            print(f"Peer ID: {peer_id.hex()}")
+                torrent = decoder.decode()
+                info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
+                peer_id = perform_handshake(peer_ip, peer_port, info_hash)
+                print(f"Peer ID: {peer_id.hex()}")  # Print the peer ID in hex format
         except FileNotFoundError:
             print(f"Error: File '{file_name}' not found.")
         except KeyError as e:
