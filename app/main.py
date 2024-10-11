@@ -151,29 +151,38 @@ def handshake(peer_ip: str, peer_port: int, infohash: bytes) -> str:
 
 def main():
     if len(sys.argv) != 4:
+        print(
+            "Usage: ./your_bittorrent.sh handshake <torrent_file> <peer_ip>:<peer_port>"
+        )
         print("Error: Not enough arguments for handshake.")
-        sys.exit(0)
+        sys.exit(1)
 
+    command = sys.argv[1]  # Should be "handshake"
     file_name = sys.argv[2]
-    peer_address = sys.argv[3]
+    peer_address = sys.argv[3]  # Should be in the format <peer_ip>:<peer_port>
 
     try:
         with open(file_name, "rb") as torrent_file:
             bencoded_content = torrent_file.read()
-            # Use bencodeDecoder to decode the bencoded content
             torrent = bencodeDecoder(bencoded_content).decode()
 
+            if "info" not in torrent:
+                raise KeyError("'info' field is missing in the torrent file.")
             info_hash = calculate_info_hash(torrent["info"])
 
-        peer_ip, peer_port = peer_address.split(":")
-        peer_port = int(peer_port)
+            # Ensure peer address is valid
+            peer_ip, peer_port = peer_address.split(":")
+            peer_port = int(peer_port)
 
-        handshake(peer_ip, peer_port, info_hash)
+            # Perform the handshake
+            handshake(peer_ip, peer_port, info_hash)
 
     except FileNotFoundError:
         print(f"Error: File '{file_name}' not found.")
     except KeyError as e:
         print(f"Error: Missing expected field in torrent file: {e}")
+    except ValueError as e:
+        print(f"Error: {e}. Ensure the peer address is in the correct format.")
     except Exception as e:
         print(f"An error occurred: {e}")
 
