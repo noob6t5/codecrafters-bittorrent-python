@@ -205,8 +205,6 @@ if __name__ == "__main__":
                 "left": torrent["info"]["length"],
                 "compact": 1,
             }
-
-            # Make GET request to the tracker
             response = requests.get(url, params=query_params)
             response_data = bencodeDecoder(response.content).decode()["peers"]
 
