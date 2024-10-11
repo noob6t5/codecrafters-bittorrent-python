@@ -115,12 +115,15 @@ def bencode(data)->bytes:
         raise TypeError(f"Cannot bencode object of type {type(data)}")
 
 
+def formatted_pieces(pieces: bytes)->List[str]:
+    return [pieces[i : i + 20].hex() for i in range(0, len(pieces), 20)]
+
+
 if __name__ == "__main__":
     command = sys.argv[1]
 
     if command == "decode":
         bencoded_inp = sys.argv[2].encode()
-        # Use bencodeDecoder to decode the value
         decoder = bencodeDecoder(bencoded_inp)
         decoded_value = decoder.decode()
         print(json.dumps(decoded_value, default=bytes_to_str))
@@ -139,6 +142,12 @@ if __name__ == "__main__":
             # Calculate the info hash
             info_hash = calculate_info_hash(torrent["info"])
             print("Info Hash:", info_hash)
+            piece_length = torrent["info"]["piece length"]
+            print("Piece Length:", piece_length)
+            piece_hashes = formatted_pieces(torrent["info"]["pieces"])
+            print("Piece Hashes:")
+            for piece_hash in piece_hashes:
+             print(piece_hash)
 
         except FileNotFoundError:
             print(f"Error: File '{file_name}' not found.")
