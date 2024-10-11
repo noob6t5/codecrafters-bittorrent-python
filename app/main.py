@@ -1,10 +1,10 @@
 import json
 import sys
+import hashlib
 from typing import Any, List, Dict
 
 
 class bencodeDecoder:
-
     def __init__(self, bencoded_value: bytes):
         self.bencoded_value = bencoded_value
         self.index = 0
@@ -82,26 +82,67 @@ class bencodeDecoder:
             raise NotImplementedError("Include Only Integers, String, Dict & List")
 
 def bytes_to_str(data):
-            if isinstance(data, bytes):
-                try:
-                    return data.decode("utf-8")
-                except UnicodeDecodeError:
-                    return data  
-            raise TypeError(f"Type not serializable: {type(data)}")
+    if isinstance(data, bytes):
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            return data  
+    raise TypeError(f"Type not serializable: {type(data)}")
+
+
+def calculate_info_hash(info_dict):
+    # Re-bencode the info dictionary using the bencode function
+    bencoded_info = bencode(info_dict)
+    sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
+    return sha1_hash
+
+
+def bencode(data)->bytes:
+
+    if isinstance(data, int):
+        return b"i" + str(data).encode() + b"e"
+    elif isinstance(data, bytes):
+        return str(len(data)).encode() + b":" + data
+    elif isinstance(data, str):
+        data = data.encode("utf-8")
+        return str(len(data)).encode() + b":" + data
+    elif isinstance(data, list):
+        return b"l" + b"".join(bencode(item) for item in data) + b"e"
+    elif isinstance(data, dict):
+        items = sorted(data.items())
+        return b"d" + b"".join(bencode(k) + bencode(v) for k, v in items) + b"e"
+    else:
+        raise TypeError(f"Cannot bencode object of type {type(data)}")
+
+
 if __name__ == "__main__":
     command = sys.argv[1]
-    bencoded_inp = sys.argv[2].encode()
 
     if command == "decode":
+        bencoded_inp = sys.argv[2].encode()
         # Use bencodeDecoder to decode the value
         decoder = bencodeDecoder(bencoded_inp)
         decoded_value = decoder.decode()
         print(json.dumps(decoded_value, default=bytes_to_str))
+
     elif command == "info":
         file_name = sys.argv[2]
-        with open(file_name, "rb") as torrent_file:
-            bencoded_content = torrent_file.read()
-        decoder = bencodeDecoder(bencoded_content)
-        torrent = decoder.decode()
-        print("Tracker URL:", torrent["announce"])  
-        print("Length:", torrent["info"]["length"])
+        try:
+            with open(file_name, "rb") as torrent_file:
+                bencoded_content = torrent_file.read()
+            decoder = bencodeDecoder(bencoded_content)
+            torrent = decoder.decode()
+
+            print("Tracker URL:", torrent["announce"])
+            print("Length:", torrent["info"]["length"])
+
+            # Calculate the info hash
+            info_hash = calculate_info_hash(torrent["info"])
+            print("Info Hash:", info_hash)
+
+        except FileNotFoundError:
+            print(f"Error: File '{file_name}' not found.")
+        except KeyError as e:
+            print(f"Error: Missing expected field in torrent file: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
