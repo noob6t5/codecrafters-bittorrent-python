@@ -1,6 +1,7 @@
 import json
 import sys
 import hashlib
+import requests
 from typing import Any, List, Dict
 
 
@@ -12,7 +13,7 @@ class bencodeDecoder:
     def decode(self) -> Any:
         return self._decode_types()
 
-    def _decode_intgr(self) -> int:
+    def _decode_intgr(self)->int:
         start_index = self.index + 1
         end_index = self.bencoded_value.find(b"e", start_index)
         if end_index == -1:
@@ -30,13 +31,15 @@ class bencodeDecoder:
         end_index = start_index + length
         if end_index > len(self.bencoded_value):
             raise ValueError("More length error.")
+        
         str_value = self.bencoded_value[start_index:end_index]
         self.index = end_index
-        
+
         try:
             return str_value.decode("utf-8")
         except UnicodeDecodeError:
-            return str_value # Return the raw bytes if decoding fails
+            return str_value
+            # Return the raw bytes if decoding fails
 
     def _decode_list(self) -> List[Any]:
         rst_list = []
@@ -144,10 +147,52 @@ if __name__ == "__main__":
             print("Info Hash:", info_hash)
             piece_length = torrent["info"]["piece length"]
             print("Piece Length:", piece_length)
+
             piece_hashes = formatted_pieces(torrent["info"]["pieces"])
             print("Piece Hashes:")
             for piece_hash in piece_hashes:
-             print(piece_hash)
+                print(piece_hash)
+
+        except FileNotFoundError:
+            print(f"Error: File '{file_name}' not found.")
+        except KeyError as e:
+            print(f"Error: Missing expected field in torrent file: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+    elif command == "peers":
+        file_name = sys.argv[2]
+        try:
+            with open(file_name, "rb") as torrent_file:
+                bencoded_content = torrent_file.read()
+                
+                
+                decoder = bencodeDecoder(bencoded_content)
+            torrent = decoder.decode()
+            url = torrent["announce"]
+            info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
+            query_params = {
+                "info_hash": info_hash,
+                "peer_id": "00112233445566778899",
+                "port": 6881,
+                "uploaded": 0,
+                "downloaded": 0,
+                "left": torrent["info"]["length"],
+                "compact": 1,
+            }
+        
+            # Make GET request to the tracker
+            response = requests.get(url, params=query_params)
+        
+            # Decode the response
+            peers = bencodeDecoder(response.content).decode()["peers"]
+        
+            # Iterate over peers and print IP and port
+            for i in range(0, len(peers), 6):
+                peer = peers[i: i + 6]
+                ip_address = f"{peer[0]}.{peer[1]}.{peer[2]}.{peer[3]}"
+                port = int.from_bytes(peer[4:], byteorder="big")
+                print(f"{ip_address}:{port}")
 
         except FileNotFoundError:
             print(f"Error: File '{file_name}' not found.")
