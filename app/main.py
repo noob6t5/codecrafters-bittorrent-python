@@ -82,8 +82,6 @@ class bencodeDecoder:
             return self._decode_str()
         else:
             raise NotImplementedError("Include Only Integers, String, Dict & List")
-
-
 def bytes_to_str(data):
     if isinstance(data, bytes):
         try:
@@ -91,14 +89,10 @@ def bytes_to_str(data):
         except UnicodeDecodeError:
             return data
     raise TypeError(f"Type not serializable: {type(data)}")
-
-
 def calculate_info_hash(info_dict):
     bencoded_info = bencode(info_dict)
     sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
     return sha1_hash
-
-
 def bencode(data) -> bytes:
     if isinstance(data, int):
         return b"i" + str(data).encode() + b"e"
@@ -121,20 +115,8 @@ def formatted_pieces(pieces: bytes) -> List[str]:
 
 
 def generate_peer_id() -> bytes:
-    return bytes.fromhex("40440440440404404040")  # Use the expected peer ID for testing
-
-
-def create_handshake(info_hash: bytes, peer_id: bytes) -> bytes:
-    protocol = b"BitTorrent protocol"
-    reserved = b"\x00" * 8
-    handshake = (
-        bytes([len(protocol)])
-        + protocol  # Protocol string
-        + reserved  # Reserved bytes
-        + info_hash  # Info hash (20 bytes)
-        + peer_id  # Peer ID (20 bytes)
-    )
-    return handshake
+    # Generate 20 random byte values to form a peer ID
+    return bytes(random.getrandbits(8) for _ in range(20))
 
 
 def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
@@ -151,7 +133,7 @@ def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
         s.connect((peer_ip, peer_port))
         s.send(handshake_message)
         response = s.recv(70)  # Expecting the response length of 68 bytes
-    return response[28:48]  # Extract the peer ID from the response
+    return response[28:48]
 
 
 if __name__ == "__main__":
@@ -186,14 +168,12 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"An error occurred: {e}")
     elif command == "handshake":
-        
         file_name = sys.argv[2]
         peer_address = sys.argv[3].split(":")
         peer_ip = peer_address[0]
         peer_port = int(peer_address[1])
-        
+
         try:
-            
             with open(file_name, "rb") as torrent_file:
                 bencoded_content = torrent_file.read()
                 decoder = bencodeDecoder(bencoded_content)
