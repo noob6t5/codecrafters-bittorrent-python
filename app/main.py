@@ -5,6 +5,8 @@ import hashlib
 import requests
 import random
 import socket
+import struct
+import urllib.parse
 from typing import Any, List, Dict
 
 
@@ -89,11 +91,9 @@ def bytes_to_str(data):
         except UnicodeDecodeError:
             return data
     raise TypeError(f"Type not serializable: {type(data)}")
-def calculate_info_hash(info_dict):
-    bencoded_info = bencode(info_dict)
-    return hashlib.sha1(bencoded_info).hexdigest()
 
 def bencode(data) -> bytes:
+
     if isinstance(data, int):
         return b"i" + str(data).encode() + b"e"
     elif isinstance(data, bytes):
@@ -108,34 +108,65 @@ def bencode(data) -> bytes:
         return b"d" + b"".join(bencode(k) + bencode(v) for k, v in items) + b"e"
     else:
         raise TypeError(f"Cannot bencode object of type {type(data)}")
-def formatted_pieces(pieces: bytes) -> List[str]:
+
+
+def generate_peer_id() -> bytes:
+    return b"-PC0001-" + bytes(random.randint(0, 255) for _ in range(12))
+
+
+def calculate_info_hash(info: dict) -> bytes:
+    return hashlib.sha1(bencode(info)).digest()
+
+
+def formatted_pieces(pieces: bytes) -> list:
     return [pieces[i : i + 20].hex() for i in range(0, len(pieces), 20)]
 
 
-def generate_peer_id():
-    return os.urandom(20)
-
-
 def perform_handshake(peer_ip: str, peer_port: int, info_hash: bytes) -> bytes:
-    peer_id = generate_peer_id()  # Now generating a random 20-byte peer ID
+    peer_id = generate_peer_id()  # Your generated peer ID
     handshake_message = (
         bytes([19])  # Length of "BitTorrent protocol"
         + b"BitTorrent protocol"  # Protocol string
-        + b"\x00" * 8  # Reserved bytes (8 bytes)
+        + b"\x00" * 8  # Reserved bytes
         + info_hash  # 20-byte info hash
-        + peer_id  # 20-byte peer ID
+        + peer_id  # Your 20-byte peer ID
     )
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((peer_ip, peer_port))
         s.send(handshake_message)
+        response = s.recv(68)  # Receive the handshake response
 
-        # Receive the handshake response (expecting 68 bytes: 49 bytes for header, 20 bytes for peer_id)
-        response = s.recv(68)
-
-    # Extract the peer ID from bytes 48-68 in the response
-    received_peer_id = response[48:68]
+    received_peer_id = response[48:68]  # Extract peer ID
     return received_peer_id
+
+
+def discover_peers(torrent: dict, info_hash: bytes, peer_id: bytes) -> None:
+    tracker_url = torrent["announce"]
+    query_params = {
+        "info_hash": info_hash,
+        "peer_id": peer_id,
+        "port": random.randint(6881, 6889),  # Random port
+        "uploaded": 0,
+        "downloaded": 0,
+        "left": torrent["info"]["length"],
+        "compact": 1,
+        "event": "started",
+    }
+
+    url = tracker_url + "?" + urllib.parse.urlencode(query_params)
+    response = requests.get(url)
+    tracker_response = bencodeDecoder(response.content).decode()
+
+    peers_binary = tracker_response["peers"]
+    peers = []
+    for i in range(0, len(peers_binary), 6):
+        ip = ".".join(str(b) for b in peers_binary[i : i + 4])
+        port = struct.unpack(">H", peers_binary[i + 4 : i + 6])[0]
+        peers.append(f"{ip}:{port}")
+
+    for peer in peers:
+        print(peer)
 
 
 if __name__ == "__main__":
@@ -154,9 +185,8 @@ if __name__ == "__main__":
             torrent = decoder.decode()
             print("Tracker URL:", torrent["announce"])
             print("Length:", torrent["info"]["length"])
-            # Calculate the info hash
             info_hash = calculate_info_hash(torrent["info"])
-            print("Info Hash:", info_hash)
+            print("Info Hash:", info_hash.hex())
             piece_length = torrent["info"]["piece length"]
             print("Piece Length:", piece_length)
             piece_hashes = formatted_pieces(torrent["info"]["pieces"])
@@ -180,11 +210,26 @@ if __name__ == "__main__":
                 bencoded_content = torrent_file.read()
                 decoder = bencodeDecoder(bencoded_content)
                 torrent = decoder.decode()
-                info_hash = hashlib.sha1(bencode(torrent["info"])).digest()
+                info_hash = calculate_info_hash(torrent["info"])
                 peer_id = perform_handshake(peer_ip, peer_port, info_hash)
-                print(
-                    f"Peer ID: {peer_id.hex()}"
-                )  # Print the received peer ID in hex format
+                print(f"Peer ID: {peer_id.hex()}")
+        except FileNotFoundError:
+            print(f"Error: File '{file_name}' not found.")
+        except KeyError as e:
+            print(f"Error: Missing expected field in torrent file: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+    elif command == "peers":
+        file_name = sys.argv[2]
+
+        try:
+            with open(file_name, "rb") as torrent_file:
+                bencoded_content = torrent_file.read()
+                decoder = bencodeDecoder(bencoded_content)
+                torrent = decoder.decode()
+                info_hash = calculate_info_hash(torrent["info"])
+                peer_id = generate_peer_id()
+                discover_peers(torrent, info_hash, peer_id)
         except FileNotFoundError:
             print(f"Error: File '{file_name}' not found.")
         except KeyError as e:
