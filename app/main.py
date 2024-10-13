@@ -169,6 +169,86 @@ def discover_peers(torrent: dict, info_hash: bytes, peer_id: bytes) -> None:
         print(peer)
 
 
+def send_message(s: socket.socket, msg_id: int, payload: bytes = b"") -> None:
+    msg_length = struct.pack(">I", len(payload) + 1)
+    s.send(msg_length + bytes([msg_id]) + payload)
+
+
+def receive_message(s: socket.socket) -> (int, bytes):
+    msg_length = struct.unpack(">I", s.recv(4))[0]
+    if msg_length == 0:
+        return -1, b""
+    msg_id = s.recv(1)[0]
+    payload = s.recv(msg_length - 1)
+    return msg_id, payload
+
+
+def download_piece(
+    peer_ip: str,
+    peer_port: int,
+    info_hash: bytes,
+    piece_index: int,
+    piece_length: int,
+    output_path: str,
+):
+    peer_id = generate_peer_id()  # Your generated peer ID
+    handshake_message = (
+        bytes([19])  # Length of "BitTorrent protocol"
+        + b"BitTorrent protocol"  # Protocol string
+        + b"\x00" * 8  # Reserved bytes
+        + info_hash  # 20-byte info hash
+        + peer_id  # Your 20-byte peer ID
+    )
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((peer_ip, peer_port))
+        s.send(handshake_message)
+        response = s.recv(68)  # Handshake response
+
+        # Wait for the bitfield message (ID 5)
+        msg_id, _ = receive_message(s)
+        if msg_id != 5:
+            raise Exception("Expected bitfield message")
+
+        # Send interested message (ID 2)
+        send_message(s, 2)
+
+        # Wait for unchoke message (ID 1)
+        msg_id, _ = receive_message(s)
+        if msg_id != 1:
+            raise Exception("Expected unchoke message")
+
+        # Download the piece by sending block requests
+        piece_data = b""
+        block_size = 16 * 1024
+        for offset in range(0, piece_length, block_size):
+            block_length = min(block_size, piece_length - offset)
+            payload = (
+                struct.pack(">I", piece_index)
+                + struct.pack(">I", offset)
+                + struct.pack(">I", block_length)
+            )
+            send_message(s, 6, payload)  # Request message (ID 6)
+
+            # Receive piece message (ID 7)
+            msg_id, payload = receive_message(s)
+            if msg_id != 7:
+                raise Exception("Expected piece message")
+            piece_data += payload[
+                8:
+            ]  # The block data starts at byte 9 (after index and begin)
+
+        # Verify the piece's hash
+        piece_hash = hashlib.sha1(piece_data).digest()
+        if piece_hash != formatted_pieces[torrent["info"]["pieces"]][piece_index]:
+            raise Exception("Piece hash mismatch")
+
+        # Write the piece to disk
+        with open(output_path, "wb") as f:
+            f.write(piece_data)
+        print(f"Piece {piece_index} downloaded and saved to {output_path}")
+
+
 if __name__ == "__main__":
     command = sys.argv[1]
     if command == "decode":
@@ -230,6 +310,35 @@ if __name__ == "__main__":
                 info_hash = calculate_info_hash(torrent["info"])
                 peer_id = generate_peer_id()
                 discover_peers(torrent, info_hash, peer_id)
+        except FileNotFoundError:
+            print(f"Error: File '{file_name}' not found.")
+        except KeyError as e:
+            print(f"Error: Missing expected field in torrent file: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+    elif command == "download_piece":
+        output_path = sys.argv[3]
+        file_name = sys.argv[4]
+        piece_index = int(sys.argv[5])
+
+        try:
+            with open(file_name, "rb") as torrent_file:
+                bencoded_content = torrent_file.read()
+                decoder = bencodeDecoder(bencoded_content)
+                torrent = decoder.decode()
+                info_hash = calculate_info_hash(torrent["info"])
+                piece_length = torrent["info"]["piece length"]
+                peer_ip = "127.0.0.1"  # Replace with actual peer IP
+                peer_port = 6881  # Replace with actual peer port
+                download_piece(
+                    peer_ip,
+                    peer_port,
+                    info_hash,
+                    piece_index,
+                    piece_length,
+                    output_path,
+                )
         except FileNotFoundError:
             print(f"Error: File '{file_name}' not found.")
         except KeyError as e:
