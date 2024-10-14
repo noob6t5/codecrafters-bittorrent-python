@@ -163,55 +163,52 @@ def discover_peers(torrent: dict, info_hash: bytes, peer_id: bytes) -> None:
         print(peer)
 
 
-def send_message(sock, message_id, payload):
-    """Send a message to the peer."""
-    payload_length = len(payload)
-    message = (
-        struct.pack("!I", payload_length + 1) + struct.pack("!B", message_id) + payload
-    )
-    print(f"Sending message ID: {message_id.hex()}, Payload: {payload.hex()}")  # Debug output
-    sock.sendall(message)
+def download_piece_from_peer(
+    peer_ip: str,
+    peer_port: int,
+    info_hash: bytes,
+    peer_id: bytes,
+    piece_index: int,
+    piece_length: int,
+    piece_hash: str,
+    output_file: str,
+):
+    block_size = 2**14  # 16 KB
+    blocks = []
+    offset = 0
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        # Connect and perform handshake
+        s.connect((peer_ip, peer_port))
+        peer_id = perform_handshake(peer_ip, peer_port, info_hash)
 
-def receive_message(sock):
-    """Receive a message from the peer."""
-    length_bytes = sock.recv(4)
-    if not length_bytes:
-        return None  # Connection closed
-    length = struct.unpack('!I', length_bytes)[0]
-    
-    message_id = sock.recv(1)
-    payload = sock.recv(length - 1)  # Exclude the message ID byte
-    print(f"Received message ID: {message_id.hex()}, Length: {length}, Payload: {payload.hex()}")  # Debug output
-    return message_id, payload   
+        # Send 'interested' message (length 1 + message id 2)
+        s.send(struct.pack(">Ib", 1, 2))
 
-def download_piece(sock, piece_index):
-    send_message(sock, 2, b'')  
+        # Read unchoke message
+        response = s.recv(5)
+        if response[3] != 1:  # Check if it's an unchoke message (ID=1)
+            raise Exception("Peer didn't unchoke")
+        while offset < piece_length:
+            block_len = min(block_size, piece_length - offset)
+            request_msg = struct.pack(">IbIII", 13, 6, piece_index, offset, block_len)
+            s.send(request_msg)
+            response = s.recv(
+                9 + block_len
+            )  # message length (4) + message id (1) + index (4) + begin (4) + block
+            blocks.append(response[13:])  # The block starts after the 13th byte
+            offset += block_len
+        piece_data = b"".join(blocks)
 
-    while True:
-        response = receive_message(sock)
-        if response is None:
-            print("No response from peer. Connection may be closed.")
-            break
+        # Verify the piece hash
+        downloaded_piece_hash = hashlib.sha1(piece_data).hexdigest()
+        if downloaded_piece_hash != piece_hash:
+            raise Exception("Piece hash does not match. Data is corrupted.")
 
-        message_id, payload = response
+        # Write the piece to disk
+        with open(output_file, "wb") as f:
+            f.write(piece_data)
+        print(f"Downloaded piece {piece_index} successfully and saved to {output_file}")
 
-        if message_id == b'\x00':  # Unchoke (message ID: 0)
-            print("Received unchoke message.")
-            # Step 4: Send request for the piece
-            payload = struct.pack('!I', piece_index)  # Piece index
-            send_message(sock, 6, payload)  # Request (message ID: 6)
-
-        elif message_id == b'\x07':  # Piece (message ID: 7)
-            print("Received piece message.")
-            # Step 5: Save the received piece
-            piece_data = payload
-            with open(f'piece_{piece_index}.bin', 'wb') as f:
-                f.write(piece_data)
-            print(f"Piece {piece_index} downloaded successfully.")
-            break  # Exit after receiving the piece
-
-        else:
-            print(f"Received unhandled message ID: {message_id.hex()}")
 
 if __name__ == "__main__":
     command = sys.argv[1]
@@ -282,30 +279,37 @@ if __name__ == "__main__":
             print(f"An error occurred: {e}")
 
     elif command == "download_piece":
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
-        peer_ip = "165.232.35.114"  # Example IP, replace as needed
-        peer_port = 51533      
-        sock.connect((peer_ip, peer_port))  # Connect to the peer
-        
-        output_file = None
-        piece_index = None
-        if len(sys.argv) > 2:
-            for i in range(2, len(sys.argv)):
-                if sys.argv[i] == "-o":
-                    output_file = sys.argv[i + 1]
-                else:
-                    piece_index = int(sys.argv[i])
-        
-        if output_file is None:
-            print("Error: Output file must be specified with -o option.")
-        elif piece_index is None:
-            print("Error: Piece index must be specified.")
-        else:
-            download_piece(sock, piece_index, output_file)
+        if len(sys.argv) != 6 or sys.argv[3] != "-o":
+            raise ValueError("Invalid command format. Expected: download_piece <torrent_file> -o <output_file> <piece_index>")
 
-        sock.close()  # Close the socket after downloading
+    file_name = sys.argv[2]
+    output_file = sys.argv[4]
+    piece_index = int(sys.argv[5])
+    
+    try:
+        with open(file_name, "rb") as torrent_file:
+            bencoded_content = torrent_file.read()
+            decoder = bencodeDecoder(bencoded_content)
+            torrent = decoder.decode()
 
-    else:
-        print("Invalid command. Available commands: decode, info, peers, handshake, download_piece.")
+            info_hash = calculate_info_hash(torrent["info"])
+            peer_id = generate_peer_id()
+            piece_length = torrent["info"]["piece length"]
+            piece_hashes = formatted_pieces(torrent["info"]["pieces"])
 
+            # Discover peers and use the first peer for downloading
+            tracker_peers = discover_peers(torrent, info_hash, peer_id)
+            if not tracker_peers:
+                raise Exception("No peers found.")
+            first_peer = tracker_peers[0]
+            peer_ip, peer_port = first_peer.split(":")
+            peer_port = int(peer_port)
+
+            # Download the requested piece
+            download_piece_from_peer(peer_ip, peer_port, info_hash, peer_id, piece_index, piece_length, piece_hashes[piece_index], output_file)
+    except FileNotFoundError:
+        print(f"Error: File '{file_name}' not found.")
+    except KeyError as e:
+        print(f"Error: Missing expected field in torrent file: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
